@@ -1,0 +1,94 @@
+{
+  "variables": {
+    "name-base": "Windows-Jenkins-Agent",
+    "build-time": "{{isotime \"2006.01.02\"}}",
+    "build-vpc": "<vpc-id>",
+    "build-subnet": "<subnet-Network-tag>",
+    "build-job": "{{env `RUN_DISPLAY_URL`}}",
+    "aws-ami-base": "Windows_Server-2019-English-Full-ECS_Optimized-*"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "name": "{{user `name-base`}}-{{user `build-time`}}",
+      "ami_name": "{{user `name-base`}}-{{user `build-time`}}-{{timestamp}}",
+      "ami_description": "{{user `name-base`}}",
+      "instance_type": "m4.xlarge",
+      "ebs_optimized": true,
+      "subnet_filter": {
+        "filters": {
+          "tag:Network": "{{user `build-subnet`}}",
+          "vpc-id": "{{user `build-vpc`}}"
+        },
+        "most_free": false,
+        "random": true
+      },
+      "source_ami_filter": {
+        "filters": {
+          "virtualization-type": "hvm",
+          "architecture": "x86_64",
+          "name": "{{user `aws-ami-base`}}",
+          "block-device-mapping.volume-type": "gp2",
+          "platform": "windows",
+          "root-device-type": "ebs"
+        },
+        "owners": [
+          "amazon"
+        ],
+        "most_recent": true
+      },
+      "user_data_file": "./scripts/windows/EC2Bootstrap.ps1",
+      "communicator": "winrm",
+      "pause_before_connecting": "3m",
+      "winrm_insecure": true,
+      "winrm_username": "Administrator",
+      "winrm_timeout": "40m",
+      "windows_password_timeout": "15m",
+      "run_tags": {
+        "Build_Job": "{{user `build-job`}}"
+      },
+      "tags": {
+        "OS_Version": "{{user `name-base`}}",
+        "Base_AMI_Name": "{{ .SourceAMIName }}",
+        "Base_AMI": "{{ .SourceAMI }}",
+        "Created": "{{isotime}}"
+      }
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "powershell",
+      "inline": [
+        "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))",
+        "choco install jdk8 -y --params 'source=false'",
+        "choco install git.install -y --params '/GitAndUnixToolsOnPath /NoGitLfs /SChannel /NoAutoCrlf'",
+        "choco install awscli -y"
+      ]
+    },
+    {
+      "type": "powershell",
+      "scripts": [
+        "./scripts/windows/enable-smb1.ps1"
+      ]
+    },
+    {
+      "type": "windows-restart",
+      "restart_check_command": "powershell -command \"& {Write-Output 'restarted.'}\""
+    },
+    {
+      "type": "powershell",
+      "inline": [
+        "choco list --localonly",
+        "C:/ProgramData/Amazon/EC2-Windows/Launch/Scripts/InitializeInstance.ps1 -Schedule",
+        "C:/ProgramData/Amazon/EC2-Windows/Launch/Scripts/SysprepInstance.ps1 -NoShutdown"
+      ]
+    }
+  ],
+  "post-processors": [
+    {
+      "type": "manifest",
+      "output": "{{user `name-base`}}-manifest.json",
+      "strip_path": true
+    }
+  ]
+}

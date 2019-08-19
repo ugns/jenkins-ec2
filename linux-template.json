@@ -1,0 +1,60 @@
+{
+  "variables": {
+    "name-base": "Linux-Jenkins-Agent",
+    "build-time": "{{isotime \"2006.01.02\"}}",
+    "build-vpc": "<vpc-id>",
+    "build-subnet": "<subnet-Network-tag>",
+    "build-job": "{{env `RUN_DISPLAY_URL`}}",
+    "aws-ami-base": "amzn-ami-2018.03.*-amazon-ecs-optimized"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "name": "{{user `name-base`}}-{{user `build-time`}}",
+      "ami_name": "{{user `name-base`}}-{{user `build-time`}}-{{timestamp}}",
+      "ami_description": "{{user `name-base`}}",
+      "instance_type": "m4.xlarge",
+      "ebs_optimized": true,
+      "subnet_filter": {
+        "filters": {
+          "tag:Network": "{{user `build-subnet`}}",
+          "vpc-id": "{{user `build-vpc`}}"
+        },
+        "most_free": false,
+        "random": true
+      },
+      "source_ami_filter": {
+        "filters": {
+          "virtualization-type": "hvm",
+          "architecture": "x86_64",
+          "name": "{{user `aws-ami-base`}}",
+          "block-device-mapping.volume-type": "gp2",
+          "root-device-type": "ebs"
+        },
+        "owners": [
+          "amazon"
+        ],
+        "most_recent": true
+      },
+      "user_data_file": "./scripts/linux/EC2Bootstrap.yml",
+      "pause_before_connecting": "3m",
+      "ssh_username": "ec2-user",
+      "run_tags": {
+        "Build_Job": "{{user `build-job`}}"
+      },
+      "tags": {
+        "OS_Version": "{{user `name-base`}}",
+        "Base_AMI_Name": "{{ .SourceAMIName }}",
+        "Base_AMI": "{{ .SourceAMI }}",
+        "Created": "{{isotime}}"
+      }
+    }
+  ],
+  "post-processors": [
+    {
+      "type": "manifest",
+      "output": "{{user `name-base`}}-manifest.json",
+      "strip_path": true
+    }
+  ]
+}
